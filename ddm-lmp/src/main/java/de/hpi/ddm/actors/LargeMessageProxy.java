@@ -1,9 +1,6 @@
 package de.hpi.ddm.actors;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import java.io.*;
 import java.util.Arrays;
 import java.util.List;
 
@@ -77,13 +74,9 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     public static class SourceMessage implements Serializable {
         private static final long serialVersionUID = 1234567743872319842L;
         private SourceRef<List<Byte>> sourceRef;
+        private int length;
         private ActorRef sender;
         private ActorRef receiver;
-
-        public SourceRef<List<Byte>> getSourceRef() {
-            return sourceRef;
-        }
-
     }
 
     /////////////////
@@ -129,7 +122,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
             objectOutputStream.close();
             byteArrayOutputStream.close();
         } catch (IOException ex) {
-            System.out.println("IOException is caught!");
+            System.out.println("Exception: " + ex);
         }
 
         byte[] byteArrayData = byteArrayOutputStream.toByteArray();
@@ -139,28 +132,38 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         SourceRef<List<Byte>> sourceRef = source.runWith(StreamRefs.sourceRef(), getContext().getSystem());
 
         // Passing the source reference as a customized "SourceMessage"
-        receiverProxy.tell(new SourceMessage(sourceRef, this.sender(), message.getReceiver()), this.self());
-
-        // This will definitely fail in a distributed setting if the serialized message is large!
-        // Solution options:
-        // 1. Serialize the object and send its bytes batch-wise (make sure to use artery's side channel then).
-        // 2. Serialize the object and send its bytes via Akka streaming.
-        // 3. Send the object via Akka's http client-server component.
-        // 4. Other ideas ...
-        // receiverProxy.tell(new BytesMessage<>(message.getMessage(), this.sender(), message.getReceiver()), this.self());
+        receiverProxy.tell(new SourceMessage(sourceRef, byteArrayData.length, this.sender(), message.getReceiver()), this.self());
     }
 
     private void handle(SourceMessage message) {
         // Receiving the customized "SourceMessage" and retrieving the source reference
         SourceRef<List<Byte>> sourceRef = message.getSourceRef();
-        sourceRef.getSource().runWith(Sink.ignore(), getContext().getSystem()) // Send the way it is
-                .whenComplete((result, exception) -> {
-                    System.out.println("We have to gather the data now!");
-                    System.out.println(result);
-                });
+        byte[] bytes = new byte[message.getLength()];
+        sourceRef.getSource().runWith(Sink.seq(), getContext().getSystem()) // Send the way it is
+                .whenComplete((data, exception) -> {
+                    int index = 0;
+                    for (List<Byte> list : data) {
+                        for (Byte abyte : list) {
+                            bytes[index] = abyte;
+                            index++;
+                        }
+                    }
 
-        // We have to forward the final object to the final receiver
-        message.getReceiver().tell("Deliver here the final assembled data", message.getSender());
+                    // De-serializing the message object
+                    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+                    try {
+                        ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream);
+                        Object object = objectInputStream.readObject();
+                        objectInputStream.close();
+                        byteArrayInputStream.close();
+                        System.out.println("Object received!");
+
+                        // Forwarding the final object to the final receiver
+                        message.getReceiver().tell(object, message.getSender());
+                    } catch (IOException | ClassNotFoundException ex) {
+                        System.out.println("Exception: " + ex);
+                    }
+                });
     }
 
     private void handle(BytesMessage<?> message) {

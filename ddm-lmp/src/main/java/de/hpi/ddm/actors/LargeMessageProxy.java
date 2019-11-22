@@ -16,6 +16,9 @@ import akka.stream.SourceRef;
 import akka.stream.javadsl.Sink;
 import akka.stream.javadsl.Source;
 import akka.stream.javadsl.StreamRefs;
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -106,23 +109,15 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         ActorSelection receiverProxy = this.context().actorSelection(receiver.path().child(DEFAULT_NAME));
 
         // Serializing the message
-        Serialization serialization = SerializationExtension.get(getContext().getSystem());
-        byte[] bytes = serialization.serialize(message).get();
-        int serializerId = serialization.findSerializerFor(message).identifier();
-        String manifest = Serializers.manifestFor(serialization.findSerializerFor(message), message);
-
-        // Creating a serialized byte message with includes serializer Id and manifest
-        SerializedByteMessage serializedByteMessage = new SerializedByteMessage(bytes, this.sender(), message.getReceiver(), serializerId, manifest);
-
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         try {
-            ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream);
-            objectOutputStream.writeObject(serializedByteMessage);
-            objectOutputStream.flush();
-            objectOutputStream.close();
+            Kryo kryo = new Kryo();
+            Output output = new Output(byteArrayOutputStream);
+            kryo.writeClassAndObject(output, message.getMessage());
+            output.close();
             byteArrayOutputStream.close();
-        } catch (Exception ex) {
-            System.out.println("Exception: " + ex);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         byte[] byteArrayData = byteArrayOutputStream.toByteArray();
@@ -150,19 +145,21 @@ public class LargeMessageProxy extends AbstractLoggingActor {
                     }
 
                     // De-serializing the message object
-                    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+                    Object messageObject = new Object();
                     try {
-                        ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream);
-                        Object object = objectInputStream.readObject();
-                        objectInputStream.close();
+                        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+                        Kryo kryo = new Kryo();
+                        Input input = new Input(byteArrayInputStream);
+                        messageObject = kryo.readClassAndObject(input);
+                        input.close();
                         byteArrayInputStream.close();
-                        System.out.println("Object received!");
-
-                        // Forwarding the final object to the final receiver
-                        message.getReceiver().tell(object, message.getSender());
-                    } catch (Exception ex) {
-                        System.out.println("Exception: " + ex);
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
+
+                    // Finally, we send the deserialize object to its destination
+                    message.receiver.tell(messageObject, message.sender);
+                    System.out.println("Message received!");
                 });
     }
 

@@ -121,7 +121,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
             objectOutputStream.flush();
             objectOutputStream.close();
             byteArrayOutputStream.close();
-        } catch (IOException ex) {
+        } catch (Exception ex) {
             System.out.println("Exception: " + ex);
         }
 
@@ -160,7 +160,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 
                         // Forwarding the final object to the final receiver
                         message.getReceiver().tell(object, message.getSender());
-                    } catch (IOException | ClassNotFoundException ex) {
+                    } catch (Exception ex) {
                         System.out.println("Exception: " + ex);
                     }
                 });

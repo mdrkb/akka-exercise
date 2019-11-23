@@ -9,9 +9,6 @@ import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
 import akka.actor.ActorSelection;
 import akka.actor.Props;
-import akka.serialization.Serialization;
-import akka.serialization.SerializationExtension;
-import akka.serialization.Serializers;
 import akka.stream.SourceRef;
 import akka.stream.javadsl.Sink;
 import akka.stream.javadsl.Source;
@@ -59,17 +56,17 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         private ActorRef receiver;
     }
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class SerializedByteMessage<T> implements Serializable {
-        private static final long serialVersionUID = 1234507743872319842L;
-        private byte[] bytes;
-        private ActorRef sender;
-        private ActorRef receiver;
-        private int serializerID;
-        private String manifest;
-    }
+//    @Data
+//    @NoArgsConstructor
+//    @AllArgsConstructor
+//    public static class SerializedByteMessage<T> implements Serializable {
+//        private static final long serialVersionUID = 1234507743872319842L;
+//        private byte[] bytes;
+//        private ActorRef sender;
+//        private ActorRef receiver;
+//        private int serializerID;
+//        private String manifest;
+//    }
 
     @Data
     @NoArgsConstructor

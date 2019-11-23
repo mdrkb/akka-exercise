@@ -120,7 +120,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         byte[] byteArrayData = byteArrayOutputStream.toByteArray();
 
         // Akka Streaming
-        Source<List<Byte>, NotUsed> source = Source.from(Arrays.asList(ArrayUtils.toObject(byteArrayData))).grouped(262144); // max size = 262144
+        Source<List<Byte>, NotUsed> source = Source.from(Arrays.asList(ArrayUtils.toObject(byteArrayData))).grouped(20000);
         SourceRef<List<Byte>> sourceRef = source.runWith(StreamRefs.sourceRef(), getContext().getSystem());
 
         // Passing the source reference as a customized "SourceMessage"
@@ -131,7 +131,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
         // Receiving the customized "SourceMessage" and retrieving the source reference
         SourceRef<List<Byte>> sourceRef = message.getSourceRef();
         byte[] bytes = new byte[message.getLength()];
-        sourceRef.getSource().runWith(Sink.seq(), getContext().getSystem()) // Send the way it is
+        sourceRef.getSource().limit(message.getLength()).runWith(Sink.seq(), getContext().getSystem())
                 .whenComplete((data, exception) -> {
                     int index = 0;
                     for (List<Byte> list : data) {
@@ -142,21 +142,21 @@ public class LargeMessageProxy extends AbstractLoggingActor {
                     }
 
                     // De-serializing the message object
-                    Object messageObject = new Object();
-                    try {
-                        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
-                        Kryo kryo = new Kryo();
-                        Input input = new Input(byteArrayInputStream);
-                        messageObject = kryo.readClassAndObject(input);
-                        input.close();
-                        byteArrayInputStream.close();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+//                    Object messageObject = new Object();
+//                    try {
+//                        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+//                        Kryo kryo = new Kryo();
+//                        Input input = new Input(byteArrayInputStream);
+//                        messageObject = kryo.readClassAndObject(input);
+//                        input.close();
+//                        byteArrayInputStream.close();
+//                    } catch (Exception e) {
+//                        e.printStackTrace();
+//                    }
 
                     // Finally, we send the deserialize object to its destination
-                    message.receiver.tell(messageObject, message.sender);
                     System.out.println("Message received!");
+                    message.getReceiver().tell(bytes, message.sender);
                 });
     }
 

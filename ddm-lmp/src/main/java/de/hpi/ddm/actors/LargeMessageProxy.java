@@ -49,28 +49,6 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class BytesMessage<T> implements Serializable {
-        private static final long serialVersionUID = 4057807743872319842L;
-        private T bytes;
-        private ActorRef sender;
-        private ActorRef receiver;
-    }
-
-//    @Data
-//    @NoArgsConstructor
-//    @AllArgsConstructor
-//    public static class SerializedByteMessage<T> implements Serializable {
-//        private static final long serialVersionUID = 1234507743872319842L;
-//        private byte[] bytes;
-//        private ActorRef sender;
-//        private ActorRef receiver;
-//        private int serializerID;
-//        private String manifest;
-//    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class SourceMessage implements Serializable {
         private static final long serialVersionUID = 1234567743872319842L;
         private SourceRef<List<Byte>> sourceRef;
@@ -95,7 +73,6 @@ public class LargeMessageProxy extends AbstractLoggingActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(LargeMessage.class, this::handle)
-                .match(BytesMessage.class, this::handle)
                 .match(SourceMessage.class, this::handle)
                 .matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
                 .build();
@@ -121,10 +98,10 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 
         // Akka Streaming
         Source<List<Byte>, NotUsed> source = Source.from(Arrays.asList(ArrayUtils.toObject(byteArrayData))).grouped(20000);
-        SourceRef<List<Byte>> sourceRef = source.runWith(StreamRefs.sourceRef(), getContext().getSystem());
+        SourceRef<List<Byte>> sourceRef = source.runWith(StreamRefs.sourceRef(), this.context().system());
 
         // Passing the source reference as a customized "SourceMessage"
-        receiverProxy.tell(new SourceMessage(sourceRef, byteArrayData.length, this.sender(), message.getReceiver()), this.self());
+        receiverProxy.tell(new SourceMessage(sourceRef, byteArrayData.length, this.sender(), message.getReceiver()), getSelf());
     }
 
     private void handle(SourceMessage message) {
@@ -142,26 +119,21 @@ public class LargeMessageProxy extends AbstractLoggingActor {
                     }
 
                     // De-serializing the message object
-//                    Object messageObject = new Object();
-//                    try {
-//                        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
-//                        Kryo kryo = new Kryo();
-//                        Input input = new Input(byteArrayInputStream);
-//                        messageObject = kryo.readClassAndObject(input);
-//                        input.close();
-//                        byteArrayInputStream.close();
-//                    } catch (Exception e) {
-//                        e.printStackTrace();
-//                    }
+                    Object messageObject = new Object();
+                    try {
+                        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+                        Kryo kryo = new Kryo();
+                        Input input = new Input(byteArrayInputStream);
+                        messageObject = kryo.readClassAndObject(input);
+                        input.close();
+                        byteArrayInputStream.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
 
                     // Finally, we send the deserialize object to its destination
                     System.out.println("Message received!");
-                    message.getReceiver().tell(bytes, message.sender);
+                    message.getReceiver().tell(messageObject, message.getSender());
                 });
-    }
-
-    private void handle(BytesMessage<?> message) {
-        // Reassemble the message content, deserialize it and/or load the content from some local location before forwarding its content.
-        message.getReceiver().tell(message.getBytes(), message.getSender());
     }
 }
